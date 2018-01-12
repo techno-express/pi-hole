@@ -31,3 +31,13 @@ docker run -d --name pihole \
 -e WEBMINPORT=off \
 --restart=always --hostname=host.pi.hole technoexpress/pihole
 ```
+
+This build also assume reverse proxy is setup. 
+This build setup to use https://github.com/adi90x/rancher-active-proxy
+
+```
+-v /nginx/rancher-active-proxy/letsencrypt/archive/host.pi.hole:/etc/letsencrypt/archive/host.pi.hole \
+-l rap.host=host.pi.hole \
+-l rap.le_host=host.pi.hole \
+-l rap.https_method=noredirect \
+```
