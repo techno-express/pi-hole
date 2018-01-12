@@ -12,13 +12,12 @@ It can be disable by passing `–e WEBMINPORT=off`
 
 Additionally passing the following environment options at run time controls operations:
 ```
-`–e DNSPORT=53`
-`–e DNS1=8.8.8.8`
-`–e DNS2=.8.4.4`
-`–e DNS2=.8.4.4`
-`–e INTERFACE=eth0`
 `–e IPV4=0.0.0.0`
 `–e IPV6=::0`
+`–e DNS1=8.8.8.8`
+`–e DNS2=.8.4.4`
+`–e DNSPORT=53`
+`–e INTERFACE=eth0`
 `–e WEBMINPORT=9000`
 ```
 If nothing is pass the above are defaults.
