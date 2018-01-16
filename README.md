@@ -1,4 +1,4 @@
-# pi-hole for docker
+# **Pi-hole** for docker
 A black hole for Internet advertisements
 
 This build was first base off https://github.com/diginc/docker-pi-hole, 

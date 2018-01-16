@@ -11,6 +11,7 @@ if [ -f "/etc/letsencrypt/archive/$HOSTNAME/cert1.pem" ]
 then
     ln -sf "/etc/letsencrypt/archive/$HOSTNAME/cert1.pem" /etc/pki/tls/certs/localhost.crt
     ln -sf "/etc/letsencrypt/archive/$HOSTNAME/privkey1.pem" /etc/pki/tls/private/localhost.key
+	cat "/etc/letsencrypt/$HOSTNAME/privkey1.pem" "/etc/letsencrypt/$HOSTNAME/cert1.pem" > /etc/webmin/miniserv.pem
 fi
 
 setting_changed='false'

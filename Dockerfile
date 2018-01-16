@@ -48,7 +48,6 @@ RUN sed -i 's#10000#9000#' /etc/webmin/miniserv.conf \
 	&& sed -i "s#--dport 53#--dport \$DNSPORT#g" /etc/.pihole/automated\ install/basic-install.sh \
     && sed -i "s@"\${PI_HOLE_GIT_URL}\"@" \${PI_HOLE_GIT_URL} \"\nsed -i \"s#':53 '#:\\\\\$DNSPORT #\" \${PI_HOLE_FILES_DIR}/pihole\nsed -i \"s#--dport 53#--dport \\\\\$DNSPORT#g\" \${PI_HOLE_FILES_DIR}/automated\\\ install/basic-install.sh@g" /etc/.pihole/advanced/Scripts/update.sh \
     && sed -i "s@"\${PI_HOLE_GIT_URL}\"@" \${PI_HOLE_GIT_URL} \"\nsed -i \"s#':53 '#:\\\\\$DNSPORT #\" \${PI_HOLE_FILES_DIR}/pihole\nsed -i \"s#--dport 53#--dport \\\\\$DNSPORT#g\" \${PI_HOLE_FILES_DIR}/automated\\\ install/basic-install.sh@g" /opt/pihole/update.sh \
-    && sed -i 's#localhost.key#localhost.key\n\tcat \"/etc/letsencrypt/archive/$HOSTNAME/privkey1.pem\" \"/etc/letsencrypt/archive/$HOSTNAME/cert1.pem\" >/etc/webmin/miniserv.pem#' /etc/containerstartup.sh \
     && systemctl.original enable dnsmasq.service lighttpd.service crond.service webmin.service containerstartup.service \
     && chmod +x /etc/containerstartup.sh \
     && mv -f /etc/containerstartup.sh /containerstartup.sh \
