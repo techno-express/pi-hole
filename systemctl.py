@@ -2,7 +2,7 @@
 from __future__ import print_function
 
 __copyright__ = "(C) 2016-2018 Guido U. Draheim, licensed under the EUPL"
-__version__ = "1.1.2000"
+__version__ = "1.2.2177"
 
 import logging
 logg = logging.getLogger("systemctl")
@@ -20,9 +20,11 @@ import time
 import socket
 import tempfile
 import datetime
+import fcntl
 
 if sys.version[0] == '2':
     string_types = basestring
+    BlockingIOError = IOError
 else:
     string_types = str
     xrange = range
@@ -30,6 +32,7 @@ else:
 DEBUG_AFTER = False
 
 # defaults for options
+_extra_vars = []
 _force = False
 _full = False
 _now = False
@@ -70,7 +73,9 @@ DefaultTimeoutStopSec = 9  # officially 90
 DefaultMaximumTimeout = 200
 InitLoopSleep = 5
 ProcMaxDepth = 100
+MaxLockWait = None # equals DefaultMaximumTimeout
 
+_systemctl_lockfile = "/var/run/systemd/system"
 _notify_socket_folder = "/var/run/systemd" # alias /run/systemd
 _notify_socket_name = "notify" # NOTIFY_SOCKET="/var/run/systemd/notify"
 _pid_file_folder = "/var/run"
@@ -445,6 +450,46 @@ class PresetFile:
                     return status
         return None
 
+## with waitlock(unit): self.start()
+class waitlock:
+    def __init__(self, unit):
+        self.unit = unit # currently unused
+        self.opened = None
+        self.lockfolder = os_path(_root, _notify_socket_folder)
+        try:
+            folder = self.lockfolder
+            if not os.path.isdir(folder):
+                os.mkdir(folder)
+        except Exception as e:
+            logg.warning("oops, %s", e)
+    def __enter__(self):
+        try:
+            lockfile = os.path.join(self.lockfolder, str(self.unit or "global") + ".lock")
+            self.opened = os.open(lockfile, os.O_RDWR | os.O_CREAT, 0o600)
+            for attempt in xrange(int(MaxLockWait or DefaultMaximumTimeout)):
+                try:
+                    fcntl.flock(self.opened, fcntl.LOCK_EX | fcntl.LOCK_NB)
+                    os.write(self.opened, "{ 'systemctl': %s, 'unit': '%s' }\n" % (os.getpid(), self.unit))
+                    logg.debug("holding %s", lockfile)
+                    break
+                except BlockingIOError as e:
+                    whom = os.read(self.opened, 4096)
+                    os.lseek(self.opened, 0, os.SEEK_SET)
+                    logg.info("(%s) systemctl locked by %s", attempt, whom.rstrip())
+                    time.sleep(1)
+                    continue
+        except Exception as e:
+            logg.warning("oops %s, %s", str(type(e)), e)
+    def __exit__(self, type, value, traceback):
+        try:
+            os.lseek(self.opened, 0, os.SEEK_SET)
+            os.ftruncate(self.opened, 0)
+            fcntl.flock(self.opened, fcntl.LOCK_UN)
+            os.close(self.opened)
+            self.opened = None
+        except Exception as e:
+            logg.warning("oops, %s", e)
+
 def subprocess_wait(cmd, env=None, check = False, shell=False):
     # logg.warning("running = %s", cmd)
     run = subprocess.Popen(cmd, shell=shell, env=env)
@@ -596,6 +641,7 @@ def sortedAfter(conflist, cmp = compareAfter):
 class Systemctl:
     def __init__(self):
         # from command line options or the defaults
+        self._extra_vars = _extra_vars
         self._force = _force
         self._full = _full
         self._init = _init
@@ -1180,6 +1226,8 @@ class Systemctl:
             logg.error("Unit %s could not be found.", unit)
             return False
         return self.get_env(conf)
+    def extra_vars(self):
+        return self._extra_vars # from command line
     def get_env(self, conf):
         env = os.environ.copy()
         for env_part in conf.data.getlist("Service", "Environment", []):
@@ -1188,6 +1236,16 @@ class Systemctl:
         for env_file in conf.data.getlist("Service", "EnvironmentFile", []):
             for name, value in self.read_env_file(env_file):
                 env[name] = self.expand_env(value, env)
+        logg.debug("extra-vars %s", self.extra_vars())
+        for extra in self.extra_vars():
+            if extra.startswith("@"):
+                for name, value in self.read_env_file(extra[1:]):
+                    logg.info("override %s=%s", name, value)
+                    env[name] = self.expand_env(value, env)
+            else:
+                for name, value in self.read_env_part(extra):
+                    logg.info("override %s=%s", name, value)
+                    env[name] = value # a '$word' is not special here
         return env
     def expand_env(self, cmd, env):
         def get_env1(m):
@@ -1432,8 +1490,9 @@ class Systemctl:
         if conf is None:
             logg.error("Unit %s could not be found.", unit)
             return False
-        logg.debug(" start unit %s => %s", unit, conf.filename())
-        return self.start_unit_from(conf)
+        with waitlock(unit):
+            logg.debug(" start unit %s => %s", unit, conf.filename())
+            return self.start_unit_from(conf)
     def get_TimeoutStartSec(self, conf):
         timeout = conf.data.get("Service", "TimeoutSec", DefaultTimeoutStartSec)
         timeout = conf.data.get("Service", "TimeoutStartSec", timeout)
@@ -1668,8 +1727,9 @@ class Systemctl:
         if conf is None:
             logg.error("Unit %s could not be found.", unit)
             return False
-        logg.info(" stop unit %s => %s", unit, conf.filename())
-        return self.stop_unit_from(conf)
+        with waitlock(unit):
+            logg.info(" stop unit %s => %s", unit, conf.filename())
+            return self.stop_unit_from(conf)
     def get_TimeoutStopSec(self, conf):
         timeout = conf.data.get("Service", "TimeoutSec", DefaultTimeoutStartSec)
         timeout = conf.data.get("Service", "TimeoutStopSec", timeout)
@@ -1836,8 +1896,9 @@ class Systemctl:
         if conf is None:
             logg.error("Unit %s could not be found.", unit)
             return False
-        logg.info(" reload unit %s => %s", unit, conf.filename())
-        return self.reload_unit_from(conf)
+        with waitlock(unit):
+            logg.info(" reload unit %s => %s", unit, conf.filename())
+            return self.reload_unit_from(conf)
     def reload_unit_from(self, conf):
         if not conf: return
         if self.syntax_check(conf) > 100: return False
@@ -1905,11 +1966,12 @@ class Systemctl:
         if conf is None:
             logg.error("Unit %s could not be found.", unit)
             return False
-        logg.info(" restart unit %s => %s", unit, conf.filename())
-        if not self.is_active_from(conf):
-            return self.start_unit_from(conf)
-        else:
-            return self.restart_unit_from(conf)
+        with waitlock(unit):
+            logg.info(" restart unit %s => %s", unit, conf.filename())
+            if not self.is_active_from(conf):
+                return self.start_unit_from(conf)
+            else:
+                return self.restart_unit_from(conf)
     def restart_unit_from(self, conf):
         if not conf: return
         if self.syntax_check(conf) > 100: return False
@@ -1942,8 +2004,10 @@ class Systemctl:
         if conf is None:
             logg.error("Unit %s could not be found.", unit)
             return False
-        if self.is_active_from(conf):
-            return self.restart_unit_from(conf)
+        with waitlock(unit):
+            logg.info(" try-restart unit %s => %s", unit, conf.filename())
+            if self.is_active_from(conf):
+                return self.restart_unit_from(conf)
         return True
     def reload_or_restart_modules(self, *modules):
         """ [UNIT]... -- reload-or-restart these units """
@@ -1971,8 +2035,9 @@ class Systemctl:
         if conf is None:
             logg.error("Unit %s could not be found.", unit)
             return False
-        logg.info(" reload-or-restart unit %s => %s", unit, conf.filename())
-        return self.reload_or_restart_unit_from(conf)
+        with waitlock(unit):
+            logg.info(" reload-or-restart unit %s => %s", unit, conf.filename())
+            return self.reload_or_restart_unit_from(conf)
     def reload_or_restart_unit_from(self, conf):
         if not self.is_active_from(conf):
             # try: self.stop_unit_from(conf)
@@ -2010,8 +2075,9 @@ class Systemctl:
         if conf is None:
             logg.error("Unit %s could not be found.", unit)
             return False
-        logg.info(" reload-or-try-restart unit %s => %s", unit, conf.filename())
-        return self.reload_or_try_restart_unit_from(conf)
+        with waitlock(unit):
+            logg.info(" reload-or-try-restart unit %s => %s", unit, conf.filename())
+            return self.reload_or_try_restart_unit_from(conf)
     def reload_or_try_restart_unit_from(self, conf):
         if conf.data.getlist("Service", "ExecReload", []):
             return self.reload_unit_from(conf)
@@ -2045,8 +2111,9 @@ class Systemctl:
         if conf is None:
             logg.error("Unit %s could not be found.", unit)
             return False
-        logg.info(" kill unit %s => %s", unit, conf.filename())
-        return self.kill_unit_from(conf)
+        with waitlock(unit):
+            logg.info(" kill unit %s => %s", unit, conf.filename())
+            return self.kill_unit_from(conf)
     def kill_stopped_unit_from(self, conf, mainpid = None):
         if not mainpid:
             return True
@@ -3147,7 +3214,9 @@ class Systemctl:
         while True:
             try:
                 time.sleep(InitLoopSleep)
-                self.system_reap_zombies()
+                running = self.system_reap_zombies()
+                if not running:
+                    break
             except KeyboardInterrupt as e:
                 signal.signal(signal.SIGTERM, signal.SIG_DFL)
                 signal.signal(signal.SIGINT, signal.SIG_DFL)
@@ -3155,9 +3224,13 @@ class Systemctl:
         return None
     def system_reap_zombies(self):
         """ check to reap children """
+        selfpid = os.getpid()
+        running = 0
         for pid in os.listdir("/proc"):
             try: pid = int(pid)
             except: continue
+            if pid == selfpid:
+                continue
             proc_status = "/proc/%s/status" % pid
             if os.path.isfile(proc_status):
                 zombie = False
@@ -3176,6 +3249,10 @@ class Systemctl:
                     try: os.waitpid(pid, os.WNOHANG)
                     except OSError as e: 
                         logg.warning("reap zombie %s: %s", e.strerror)
+            if os.path.isfile(proc_status):
+                if pid > 1:
+                    running += 1
+        return running # except PID 0 and PID 1
     def pidlist_of(self, pid):
         try: pid = int(pid)
         except: return []
@@ -3450,6 +3527,9 @@ if __name__ == "__main__":
         help="Print unit dependencies as a list instead of a tree (ignored)")
     _o.add_option("--no-pager", action="store_true",
         help="Do not pipe output into pager (ignored)")
+    #
+    _o.add_option("-e","--extra-vars", "--environment", metavar="NAME=VAL", action="append", default=[],
+        help="..override settings in the syntax of 'Environment='")
     _o.add_option("-v","--verbose", action="count", default=0,
         help="..increase debugging information level")
     _o.add_option("-4","--ipv4", action="store_true", default=False,
@@ -3462,6 +3542,7 @@ if __name__ == "__main__":
     logging.basicConfig(level = max(0, logging.FATAL - 10 * opt.verbose))
     logg.setLevel(max(0, logging.ERROR - 10 * opt.verbose))
     #
+    _extra_vars = opt.extra_vars
     _force = opt.force
     _full = opt.full
     _no_legend = opt.no_legend
@@ -3540,4 +3621,3 @@ if __name__ == "__main__":
         sys.exit(1)
     #
     sys.exit(print_result(result))
-	
