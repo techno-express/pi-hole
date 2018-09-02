@@ -15,9 +15,10 @@ RUN cp -f /usr/bin/systemctl /usr/bin/systemctl.original \
 COPY etc /etc/
 COPY var /var/
 
-RUN export USER=pihole && adduser pihole -m -s /usr/sbin/nologin && touch /etc/pihole/local.list \
-    && wget -qO basic-install.sh https://install.pi-hole.net \
-    && bash basic-install.sh --unattended \
+RUN export USER=pihole && adduser pihole -m -s /usr/sbin/nologin && touch /etc/pihole/adlists.list \
+    && wget -qO basic-install.sh https://install.pi-hole.net
+
+RUN chmod +x basic-install.sh && ./basic-install.sh --unattended \
     && rm -f basic-install.sh 
 
 # Install Webmin repositorie and Webmin
