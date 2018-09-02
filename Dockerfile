@@ -4,7 +4,7 @@ MAINTAINER Lawrence Stubbs <technoexpressnet@gmail.com>
 RUN rpm -Uvh https://dl.fedoraproject.org/pub/epel/epel-release-latest-7.noarch.rpm \
     && yum install wget dialog git iproute net-tools newt bind-utils nmap-ncat which \
     bc dnsmasq lighttpd lighttpd-fastcgi unzip cronie sudo php php-cli php-common -y \
-    && yum update -y 
+    && yum update -y
 
 # Fixes issue with running systemD inside docker builds 
 # From https://github.com/gdraheim/docker-systemctl-replacement
