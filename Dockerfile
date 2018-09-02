@@ -1,5 +1,5 @@
 FROM centos:7
-MAINTAINER Lawrence Stubbs <technoexpressnet@gmail.com>
+LABEL Lawrence Stubbs <technoexpressnet@gmail.com>
 
 RUN rpm -Uvh https://dl.fedoraproject.org/pub/epel/epel-release-latest-7.noarch.rpm \
     && yum install wget dialog git iproute net-tools newt bind-utils nmap-ncat which \
@@ -18,9 +18,9 @@ COPY var /var/
 RUN export USER=pihole && adduser pihole -m -s /usr/sbin/nologin && touch /etc/pihole/adlists.list \
     && wget -qO basic-install.sh https://install.pi-hole.net
 
-ENV TERM xterm
-RUN chmod +x basic-install.sh && bash basic-install.sh --unattended \
-    && rm -f basic-install.sh 
+ENV TERM vt220
+RUN chmod +x basic-install.sh && ./basic-install.sh --unattended
+RUN rm -f basic-install.sh 
 
 # Install Webmin repositorie and Webmin
 RUN yum -y install perl perl-Net-SSLeay openssl perl-IO-Tty perl-Encode-Detect \
