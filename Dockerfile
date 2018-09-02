@@ -18,7 +18,7 @@ COPY var /var/
 RUN export USER=pihole && adduser pihole -m -s /usr/sbin/nologin && touch /etc/pihole/adlists.list \
     && wget -qO basic-install.sh https://install.pi-hole.net
 
-RUN chmod +x basic-install.sh && ./basic-install.sh --unattended \
+RUN chmod +x basic-install.sh && export TERM=xterm && ./basic-install.sh --unattended \
     && rm -f basic-install.sh 
 
 # Install Webmin repositorie and Webmin
