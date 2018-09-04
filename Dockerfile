@@ -2,6 +2,8 @@ FROM centos:7
 LABEL Lawrence Stubbs <technoexpressnet@gmail.com>
 
 RUN rpm -Uvh https://dl.fedoraproject.org/pub/epel/epel-release-latest-7.noarch.rpm \
+    && yum install http://rpms.remirepo.net/enterprise/remi-release-7.rpm -y \
+    && yum-config-manager --enable remi-php72 \
     && yum install wget dialog git iproute net-tools newt bind-utils nmap-ncat which \
     bc dnsmasq lighttpd lighttpd-fastcgi unzip cronie sudo php72 -y \
     && yum update -y
@@ -24,7 +26,7 @@ RUN rm -f basic-install.sh
 
 # Install Webmin repositorie and Webmin
 RUN yum -y install perl perl-Net-SSLeay openssl perl-IO-Tty perl-Encode-Detect \
-	&& yum -y install http://prdownloads.sourceforge.net/webadmin/webmin-1.870-1.noarch.rpm 
+	&& yum -y install https://prdownloads.sourceforge.net/webadmin/webmin-1.890-1.noarch.rpm 
    
 RUN yum install yum-versionlock -y && yum versionlock systemd \
     && yum remove nmap-ncat -y \
